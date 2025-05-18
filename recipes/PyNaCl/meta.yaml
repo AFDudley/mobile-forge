@@ -2,11 +2,15 @@ package:
   name: PyNaCl
   version: 1.5.0
 
-patches:
-  - apple-xcframework.sh.patch
+build:
+  number: 1
+  script_env: 
+    - SODIUM_INSTALL=system
+    - PYNACL_SODIUM_STATIC=1
+    - SDKROOT=$SDKROOT
+    - PREFIX=$PREFIX
 
-  
-  
 requirements:
   host:
     - libffi 3.4.6
+    - libsodium 1.0.18

@@ -4,6 +4,7 @@ package:
 
 patches:
   - mobile.patch
+  - apple-xcframework.patch
 
 requirements:
   host:

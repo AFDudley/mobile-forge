@@ -1,5 +1,5 @@
---- orig/setup.py	2025-05-18 03:14:06
-+++ patched/setup.py	2025-05-18 03:17:35
+--- tmp/pynacl-clean/orig/setup.py	2025-05-18 03:42:18
++++ tmp/pynacl-clean/patched/setup.py	2025-05-18 03:42:18
 @@ -22,7 +22,9 @@
  import platform
  import shutil
@@ -55,27 +55,17 @@
              raise Exception("ERROR: The 'make' utility is missing from PATH")
  
 \ No newline at end of file
-@@ -173,6 +203,53 @@
- 
+@@ -174,7 +204,45 @@
          # Install the built library
          subprocess.check_call(["make", "install"] + make_args, cwd=build_temp)
-+
+ 
 +    def _build_ios_xcframework(self):
 +        """Build libsodium using the iOS-specific xcframework script."""
-+        # Find the custom script in the recipes directory
-+        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "recipes", "PyNaCl"))
-+        custom_script_path = os.path.join(script_dir, "ios-xcframework.sh")
++        # The script is copied by build.sh to this location
++        xcframework_script = abshere("src/libsodium/dist-build/ios-xcframework.sh")
 +        
-+        # Copy it to the source directory
-+        dest_script_path = abshere("src/libsodium/dist-build/ios-xcframework.sh")
-+        with open(custom_script_path, 'rb') as src_file:
-+            script_content = src_file.read()
-+        
-+        with open(dest_script_path, 'wb') as dest_file:
-+            dest_file.write(script_content)
-+        
-+        # Make the script executable
-+        os.chmod(dest_script_path, 0o755)
++        # Ensure script is executable
++        os.chmod(xcframework_script, os.stat(xcframework_script).st_mode | stat.S_IEXEC)
 +        
 +        # Set environment variables
 +        env = os.environ.copy()
@@ -93,7 +83,7 @@
 +        # Run the xcframework script
 +        print("Building libsodium XCFramework for iOS platforms...")
 +        build_dir = abshere("src/libsodium")
-+        subprocess.check_call([dest_script_path], cwd=build_dir, env=env)
++        subprocess.check_call([xcframework_script], cwd=build_dir, env=env)
 +        
 +        # Copy headers and libs from the XCFramework to include directory
 +        lib_dir = os.path.join(self.build_clib, "lib")
@@ -107,10 +97,12 @@
 +                              os.path.join(build_dir, "libsodium-apple/ios/include/"), 
 +                              os.path.dirname(include_dir)])
  
- 
++
  class build_ext(_build_ext):
+     def run(self):
+         if self.distribution.has_c_libraries():
 \ No newline at end of file
-@@ -190,6 +267,13 @@
+@@ -190,6 +258,13 @@
                  0,
                  os.path.join(build_clib.build_clib, "lib"),
              )
@@ -125,7 +117,7 @@
          return _build_ext.run(self)
  
 \ No newline at end of file
-@@ -231,4 +315,4 @@
+@@ -231,4 +306,4 @@
          "Programming Language :: Python :: 3.9",
          "Programming Language :: Python :: 3.10",
      ],

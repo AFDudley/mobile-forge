@@ -1,5 +1,5 @@
---- tmp/pynacl-clean/orig/setup.py	2025-05-18 03:42:18
-+++ tmp/pynacl-clean/patched/setup.py	2025-05-18 03:42:18
+--- orig/setup.py	2025-05-18 03:50:52
++++ patched/setup.py	2025-05-18 03:53:32
 @@ -22,7 +22,9 @@
  import platform
  import shutil

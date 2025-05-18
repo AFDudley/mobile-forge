@@ -1,30 +1,26 @@
-diff -ru PyNaCl-1.5.0-orig/setup.py PyNaCl-1.5.0/setup.py
---- PyNaCl-1.5.0-orig/setup.py	2022-01-15 00:00:00.000000000 -0000
-+++ PyNaCl-1.5.0/setup.py	2023-01-01 00:00:00.000000000 -0000
-@@ -19,6 +19,7 @@
- import glob
- import os
- import os.path
-+import stat
+--- orig/setup.py	2025-05-18 03:14:06
++++ patched/setup.py	2025-05-18 03:17:35
+@@ -22,7 +22,9 @@
  import platform
  import shutil
  import subprocess
-@@ -26,6 +27,7 @@
++import stat
  import sys
- from sysconfig import get_config_vars
 +import sysconfig
+ from sysconfig import get_config_vars
  
  from setuptools import Distribution, setup
- from setuptools.command.build_clib import build_clib as _build_clib
-@@ -59,6 +61,28 @@
- 
+\ No newline at end of file
+@@ -61,6 +63,29 @@
  sodium = functools.partial(here, "src/libsodium/src/libsodium")
+ 
  
 +# Path to xcframework output directory
 +def xcframework_dir(*paths):
 +    return os.path.join(abshere("src/libsodium/libsodium-apple"), *paths)
 +
 +
++# Detect if building for Apple platforms
 +def is_apple_mobile_platform():
 +    """Detect if we're building for an Apple mobile platform."""
 +    platform_name = sysconfig.get_platform()
@@ -42,31 +38,32 @@ diff -ru PyNaCl-1.5.0-orig/setup.py PyNaCl-1.5.0/setup.py
 +    return platform_name.startswith(('ios-', 'tvos-', 'watchos-'))
 +
 +
- 
  sys.path.insert(0, abshere("src"))
  
-@@ -137,6 +161,11 @@
+ 
+\ No newline at end of file
+@@ -137,6 +162,11 @@
          ]:
              os.chmod(here(filename), 0o755)
  
-+        # For Apple mobile platforms, we'll use the ios-xcframework script instead of make
++        # For Apple mobile platforms, use our iOS-specific xcframework build
 +        if is_apple_mobile_platform():
 +            return self._build_ios_xcframework()
-+            
++
 +        # For non-Apple platforms, use the standard build with make
          if not shutil.which("make"):
              raise Exception("ERROR: The 'make' utility is missing from PATH")
  
-@@ -173,6 +202,43 @@
+\ No newline at end of file
+@@ -173,6 +203,53 @@
+ 
          # Install the built library
          subprocess.check_call(["make", "install"] + make_args, cwd=build_temp)
- 
++
 +    def _build_ios_xcframework(self):
 +        """Build libsodium using the iOS-specific xcframework script."""
-+        # First, copy our custom script to the source directory
-+        # The custom script is in the recipes directory - one level up from the build directory
-+        build_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-+        script_dir = os.path.join(build_dir, "recipes", "PyNaCl")
++        # Find the custom script in the recipes directory
++        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "recipes", "PyNaCl"))
 +        custom_script_path = os.path.join(script_dir, "ios-xcframework.sh")
 +        
 +        # Copy it to the source directory
@@ -77,11 +74,8 @@ diff -ru PyNaCl-1.5.0-orig/setup.py PyNaCl-1.5.0/setup.py
 +        with open(dest_script_path, 'wb') as dest_file:
 +            dest_file.write(script_content)
 +        
-+        # Make it executable
++        # Make the script executable
 +        os.chmod(dest_script_path, 0o755)
-+            
-+        # Create the build directory
-+        build_dir = abshere("src/libsodium")
 +        
 +        # Set environment variables
 +        env = os.environ.copy()
@@ -89,30 +83,52 @@ diff -ru PyNaCl-1.5.0-orig/setup.py PyNaCl-1.5.0/setup.py
 +        # Set iOS minimum version
 +        env["IOS_SIMULATOR_VERSION_MIN"] = "13.0"
 +        env["IOS_VERSION_MIN"] = "13.0"
-+            
++        
 +        # Determine if we need minimal build
 +        if os.environ.get("SODIUM_INSTALL_MINIMAL"):
 +            env["LIBSODIUM_FULL_BUILD"] = ""
 +        else:
 +            env["LIBSODIUM_FULL_BUILD"] = "1"
-+            
++        
 +        # Run the xcframework script
 +        print("Building libsodium XCFramework for iOS platforms...")
++        build_dir = abshere("src/libsodium")
 +        subprocess.check_call([dest_script_path], cwd=build_dir, env=env)
-+
++        
++        # Copy headers and libs from the XCFramework to include directory
++        lib_dir = os.path.join(self.build_clib, "lib")
++        include_dir = os.path.join(self.build_clib, "include")
++        
++        os.makedirs(lib_dir, exist_ok=True)
++        os.makedirs(include_dir, exist_ok=True)
++        
++        # Copy headers to include directory
++        subprocess.check_call(["cp", "-a", 
++                              os.path.join(build_dir, "libsodium-apple/ios/include/"), 
++                              os.path.dirname(include_dir)])
+ 
  
  class build_ext(_build_ext):
-     def run(self):
-@@ -190,5 +256,12 @@
+\ No newline at end of file
+@@ -190,6 +267,13 @@
                  0,
                  os.path.join(build_clib.build_clib, "lib"),
              )
 +            
 +            # If building for Apple platforms, add the XCFramework to library paths
 +            if is_apple_platform():
-+                # Use the iOS simulator library for iOS simulator builds
-+                xcframework_path = xcframework_dir("Clibsodium.xcframework")
++                sodium_dir = abshere("src/libsodium")
++                xcframework_path = os.path.join(sodium_dir, "libsodium-apple/Clibsodium.xcframework")
 +                self.libraries.append("-framework")
 +                self.libraries.append("Clibsodium")
  
          return _build_ext.run(self)
+ 
+\ No newline at end of file
+@@ -231,4 +315,4 @@
+         "Programming Language :: Python :: 3.9",
+         "Programming Language :: Python :: 3.10",
+     ],
+-)
++)
+\ No newline at end of file

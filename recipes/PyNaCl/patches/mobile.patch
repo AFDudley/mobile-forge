@@ -1,5 +1,5 @@
 --- orig/setup.py	2025-05-18 03:50:52
-+++ patched/setup.py	2025-05-18 03:53:32
++++ patched/setup.py	2025-05-18 04:44:00
 @@ -22,7 +22,9 @@
  import platform
  import shutil
@@ -61,8 +61,8 @@
  
 +    def _build_ios_xcframework(self):
 +        """Build libsodium using the iOS-specific xcframework script."""
-+        # The script is copied by build.sh to this location
-+        xcframework_script = abshere("src/libsodium/dist-build/ios-xcframework.sh")
++        # Use the apple-xcframework.sh script
++        xcframework_script = abshere("src/libsodium/dist-build/apple-xcframework.sh")
 +        
 +        # Ensure script is executable
 +        os.chmod(xcframework_script, os.stat(xcframework_script).st_mode | stat.S_IEXEC)

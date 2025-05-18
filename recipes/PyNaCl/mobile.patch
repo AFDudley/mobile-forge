@@ -1,0 +1,123 @@
+diff -ru PyNaCl-1.5.0-orig/setup.py PyNaCl-1.5.0/setup.py
+--- PyNaCl-1.5.0-orig/setup.py	2022-01-15 20:06:54.000000000 +0000
++++ PyNaCl-1.5.0/setup.py	2023-05-18 00:00:00.000000000 +0000
+@@ -22,8 +22,10 @@
+ import platform
+ import shutil
+ import subprocess
++import stat
+ import sys
+ from sysconfig import get_config_vars
++import sysconfig
+ 
+ from setuptools import Distribution, setup
+ from setuptools.command.build_clib import build_clib as _build_clib
+@@ -59,6 +61,11 @@
+ 
+ sodium = functools.partial(here, "src/libsodium/src/libsodium")
+ 
++# Path to xcframework output directory
++def xcframework_dir(*paths):
++    return os.path.join(abshere("src/libsodium/libsodium-apple"), *paths)
++
++
+ 
+ sys.path.insert(0, abshere("src"))
+ 
+@@ -78,6 +85,23 @@
+         return False
+ 
+ 
++def is_apple_mobile_platform():
++    """Detect if we're building for an Apple mobile platform."""
++    platform_name = sysconfig.get_platform()
++    # Detect iOS/tvOS/watchOS build environments
++    return platform_name.startswith(('ios-', 'tvos-', 'watchos-'))
++
++
++def is_apple_platform():
++    """Detect if we're building for any Apple platform."""
++    system = platform.system()
++    if system == 'Darwin':
++        return True
++    # Also check sysconfig platform for iOS/tvOS/watchOS
++    platform_name = sysconfig.get_platform()
++    return platform_name.startswith(('ios-', 'tvos-', 'watchos-'))
++
++
+ class Distribution(Distribution):
+     def has_c_libraries(self):
+         return not use_system()
+@@ -137,8 +161,12 @@
+         ]:
+             os.chmod(here(filename), 0o755)
+ 
+-        if not shutil.which("make"):
+-            raise Exception("ERROR: The 'make' utility is missing from PATH")
++        # For Apple mobile platforms, we'll use the xcframework script instead of make
++        if not is_apple_mobile_platform():
++            if not shutil.which("make"):
++                raise Exception("ERROR: The 'make' utility is missing from PATH")
++
++        if is_apple_mobile_platform():
++            return self._build_apple_xcframework()
+ 
+         # Locate our configure script
+         configure = abshere("src/libsodium/configure")
+@@ -173,6 +201,43 @@
+         # Install the built library
+         subprocess.check_call(["make", "install"] + make_args, cwd=build_temp)
+ 
++    def _build_apple_xcframework(self):
++        """Build libsodium using the apple-xcframework.sh script."""
++        # Ensure our XCFramework script is executable
++        xcframework_script = abshere("src/libsodium/dist-build/apple-xcframework.sh")
++        os.chmod(xcframework_script, os.stat(xcframework_script).st_mode | stat.S_IEXEC)
++
++        # Create the build directory
++        build_dir = abshere("src/libsodium")
++        
++        # Set environment variables
++        env = os.environ.copy()
++        
++        # Determine if we need minimal build
++        if os.environ.get("SODIUM_INSTALL_MINIMAL"):
++            env["LIBSODIUM_FULL_BUILD"] = ""
++        else:
++            env["LIBSODIUM_FULL_BUILD"] = "1"
++            
++        # Run the apple-xcframework.sh script
++        print("Building libsodium XCFramework for Apple platforms...")
++        subprocess.check_call([xcframework_script], cwd=build_dir, env=env)
++        
++        print("XCFramework build complete.")
++        
++        # The XCFramework is in src/libsodium/libsodium-apple/Clibsodium.xcframework
++        # Create the include and lib directories in build_clib
++        lib_dir = os.path.join(self.build_clib, "lib")
++        include_dir = os.path.join(self.build_clib, "include")
++        
++        os.makedirs(lib_dir, exist_ok=True)
++        os.makedirs(include_dir, exist_ok=True)
++        
++        # Copy headers to include directory
++        subprocess.check_call(["cp", "-a", 
++                              xcframework_dir("ios", "include"), 
++                              os.path.dirname(include_dir)])
++        
++        # The static library will be linked at compile time from the XCFramework
+ 
+ class build_ext(_build_ext):
+     def run(self):
+@@ -190,6 +255,12 @@
+                 0,
+                 os.path.join(build_clib.build_clib, "lib"),
+             )
++            
++            # If building for Apple platforms, add the XCFramework to library paths
++            if is_apple_platform():
++                xcframework_path = xcframework_dir("Clibsodium.xcframework")
++                self.libraries.append("-framework")
++                self.libraries.append("Clibsodium")
+ 
+         return _build_ext.run(self)

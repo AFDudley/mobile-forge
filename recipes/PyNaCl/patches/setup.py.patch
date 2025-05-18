@@ -1,0 +1,98 @@
+--- orig/setup.py	2025-05-18 03:50:52
++++ patched/setup.py	2025-05-18 11:16:50
+@@ -22,7 +22,9 @@
+ import platform
+ import shutil
+ import subprocess
++import stat
+ import sys
++import sysconfig
+ from sysconfig import get_config_vars
+ 
+ from setuptools import Distribution, setup
+\ No newline at end of file
+@@ -61,6 +63,13 @@
+ sodium = functools.partial(here, "src/libsodium/src/libsodium")
+ 
+ 
++def is_apple_mobile_platform():
++    """Detect if we're building for an Apple mobile platform."""
++    platform_name = sysconfig.get_platform()
++    # Detect iOS/tvOS/watchOS build environments
++    return platform_name.startswith(('ios-', 'tvos-', 'watchos-'))
++
++
+ sys.path.insert(0, abshere("src"))
+ 
+ 
+\ No newline at end of file
+@@ -134,8 +143,35 @@
+             "src/libsodium/missing",
+             "src/libsodium/msvc-scripts/process.bat",
+             "src/libsodium/test/default/wintest.bat",
++            "src/libsodium/dist-build/apple-xcframework.sh",
+         ]:
+             os.chmod(here(filename), 0o755)
++
++        # For Apple mobile platforms, run XCFramework script
++        if is_apple_mobile_platform():
++            # Make sure apple-xcframework.sh is executable
++            xcframework_script = abshere("src/libsodium/dist-build/apple-xcframework.sh")
++            os.chmod(xcframework_script, os.stat(xcframework_script).st_mode | stat.S_IEXEC)
++            
++            # Set environment variables
++            env = os.environ.copy()
++            env["IOS_SIMULATOR_VERSION_MIN"] = "13.0"
++            env["IOS_VERSION_MIN"] = "13.0"
++            
++            # Run the script
++            print("Building libsodium XCFramework for iOS platforms...")
++            build_dir = abshere("src/libsodium")
++            subprocess.check_call([xcframework_script], cwd=build_dir, env=env)
++            
++            # Copy headers to include directory
++            lib_dir = os.path.join(self.build_clib, "lib")
++            include_dir = os.path.join(self.build_clib, "include")
++            os.makedirs(lib_dir, exist_ok=True)
++            os.makedirs(include_dir, exist_ok=True)
++            subprocess.check_call(["cp", "-a", 
++                                  os.path.join(build_dir, "libsodium-apple/ios/include/"), 
++                                  os.path.dirname(include_dir)])
++            return
+ 
+         if not shutil.which("make"):
+             raise Exception("ERROR: The 'make' utility is missing from PATH")
+\ No newline at end of file
+@@ -151,6 +187,11 @@
+             "--disable-dependency-tracking",
+             "--with-pic",
+         ]
++        
++        # Add host flag for cross-compilation
++        if is_apple_mobile_platform():
++            configure_flags.append("--host=arm-apple-darwin")
++            
+         if platform.system() == "SunOS":
+             # On Solaris, libssp doesn't link statically and causes linker
+             # errors during import
+\ No newline at end of file
+@@ -190,6 +231,11 @@
+                 0,
+                 os.path.join(build_clib.build_clib, "lib"),
+             )
++            
++            # If building for Apple mobile platforms, link with XCFramework
++            if is_apple_mobile_platform():
++                self.libraries.append("-framework")
++                self.libraries.append("Clibsodium")
+ 
+         return _build_ext.run(self)
+ 
+\ No newline at end of file
+@@ -231,4 +277,4 @@
+         "Programming Language :: Python :: 3.9",
+         "Programming Language :: Python :: 3.10",
+     ],
+-)
++)
+\ No newline at end of file

@@ -3,9 +3,7 @@ package:
   version: 1.5.0
 
 patches:
-  - mobile.patch
-  - apple-xcframework.patch
-
+  - setup.py.patch
 requirements:
   host:
     - libffi 3.4.6

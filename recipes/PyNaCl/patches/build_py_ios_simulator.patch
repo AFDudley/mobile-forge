@@ -1,0 +1,42 @@
+--- a/build.py
++++ b/build.py
+@@ -15,6 +15,7 @@
+ import glob
+ import os.path
+ import sys
++import os
+ 
+ from cffi import FFI
+ 
+@@ -54,9 +55,25 @@
+         source.append(hfile.read())
+ 
+ if sys.platform == "win32":
+-    libraries = ["libsodium"]
++    libraries = ["libsodium"] 
++elif os.environ.get("SDKROOT", "").find("iPhoneSimulator") >= 0:
++    # iOS simulator build detected
++    print("iOS Simulator build detected, configuring for simulator...")
++    
++    # Get the PREFIX environment variable
++    prefix = os.environ.get("PREFIX", "")
++    
++    # Check if simulator libraries exist
++    simulator_lib_path = os.path.join(prefix, "ios-simulators", "lib")
++    if os.path.exists(simulator_lib_path):
++        print(f"Using simulator libraries from: {simulator_lib_path}")
++        # Set source with explicit library path for simulator
++        ffi.set_source("_sodium", "\n".join(source), 
++                      libraries=["sodium"],
++                      library_dirs=[simulator_lib_path])
++        libraries = None  # Skip the default set_source below
++    else:
++        libraries = ["sodium"]
+ else:
+     libraries = ["sodium"]
+ 
+-# Set our source so that we can actually build our bindings to sodium.
+-ffi.set_source("_sodium", "\n".join(source), libraries=libraries)
++# Only set the source if it wasn't already set for simulator
++if libraries is not None:
++    ffi.set_source("_sodium", "\n".join(source), libraries=libraries)
